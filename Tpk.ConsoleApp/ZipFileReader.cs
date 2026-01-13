@@ -45,21 +45,24 @@ namespace AssetRipper.Tpk.ConsoleApp
 		/// </summary>
 		/// <param name="zipFilePath"></param>
 		/// <returns>A list ordered by Unity version</returns>
-		public static IEnumerable<TypeTreeBinary> ReadTypeTreeBinaryFromZipFile(string zipFilePath)
+		public static IEnumerable<(UnityVersion, TypeTreeBinary)> ReadTypeTreeBinaryFromZipFile(string zipFilePath)
 		{
-			List<TypeTreeBinary> list = new();
+			List<(UnityVersion, TypeTreeBinary)> list = [];
 
-			using FileStream fileStream = File.OpenRead(zipFilePath);
-			using ZipInputStream zipInputStream = new ZipInputStream(fileStream);
-			ZipEntry entry;
-			while ((entry = zipInputStream.GetNextEntry()) is not null)
+			using var fileStream = File.OpenRead(zipFilePath);
+			using var zipInputStream = new ZipInputStream(fileStream);
+			while (zipInputStream.GetNextEntry() is { } entry)
 			{
 				if (entry.IsFile && entry.Name.EndsWith(".ttbin", StringComparison.Ordinal))
 				{
-					using MemoryStream unzippedFileStream = new MemoryStream();
+					var directoryName = Path.GetDirectoryName(entry.Name)!;
+					var version = UnityVersion.Parse(directoryName);
+
+					using var unzippedFileStream = new MemoryStream();
 					zipInputStream.CopyTo(unzippedFileStream);
 					unzippedFileStream.Position = 0;
-					list.Add(TypeTreeBinary.FromStream(unzippedFileStream));
+
+					list.Add((version, TypeTreeBinary.FromStream(unzippedFileStream)));
 				}
 			}
 
@@ -95,7 +98,7 @@ namespace AssetRipper.Tpk.ConsoleApp
 		/// Zero: equivalent position<br />
 		/// Greater than zero: a follows b
 		/// </returns>
-		private static int CompareTypeTreeBinary(TypeTreeBinary a, TypeTreeBinary b)
-			=> a.Header.Revision.CompareTo(b.Header.Revision);
+		private static int CompareTypeTreeBinary((UnityVersion, TypeTreeBinary) a, (UnityVersion, TypeTreeBinary) b)
+			=> a.Item1.CompareTo(b.Item2);
 	}
 }

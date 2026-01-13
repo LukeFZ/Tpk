@@ -27,10 +27,16 @@ namespace AssetRipper.Tpk.ConsoleApp
 				? Create(ZipFileReader.ReadTypeTreeBinaryFromZipFile(zipFilePath)) 
 				: Create(ZipFileReader.ReadUnityInfoFromZipFile(zipFilePath));
 
-		private static TpkTypeTreeBlob Create(IEnumerable<string> pathsOrderedByUnityVersion, bool isBinary) =>
-			isBinary 
-				? Create(pathsOrderedByUnityVersion.Select(TypeTreeBinary.FromFile)) 
-				: Create(pathsOrderedByUnityVersion.Select(UnityInfo.ReadFromJsonFile));
+		private static TpkTypeTreeBlob Create(IEnumerable<string> pathsOrderedByUnityVersion, bool isBinary)
+		{
+			if (isBinary)
+			{
+				return Create(pathsOrderedByUnityVersion.Select(x =>
+					(UnityVersion.Parse(Directory.GetParent(x)!.Name), TypeTreeBinary.FromFile(x))));
+			}
+
+			return Create(pathsOrderedByUnityVersion.Select(UnityInfo.ReadFromJsonFile));
+		}
 
 		private static TpkTypeTreeBlob Create(IEnumerable<UnityInfo> infosOrderedByUnityVersion)
 		{
@@ -102,7 +108,7 @@ namespace AssetRipper.Tpk.ConsoleApp
 			return blob;
 		}
 
-		private static TpkTypeTreeBlob Create(IEnumerable<TypeTreeBinary> typeTreeBinariesOrderedByUnityVersion)
+		private static TpkTypeTreeBlob Create(IEnumerable<(UnityVersion, TypeTreeBinary)> typeTreeBinariesOrderedByUnityVersion)
 		{
 			var blob = new TpkTypeTreeBlob();
 			blob.CommonString.Add(UnityVersion.MinVersion, 0);
@@ -112,16 +118,15 @@ namespace AssetRipper.Tpk.ConsoleApp
 
 			var versionClasses = new Dictionary<UnityVersion, Dictionary<int, TpkUnityClass>>();
 
-			foreach (var typeTreeBinary in typeTreeBinariesOrderedByUnityVersion)
+			foreach (var (fullVersion, typeTreeBinary) in typeTreeBinariesOrderedByUnityVersion)
 			{
-				var version = typeTreeBinary.Header.Revision;
-				if (!versionClasses.TryGetValue(version, out var classesByTypeId))
+				if (!versionClasses.TryGetValue(fullVersion, out var classesByTypeId))
 				{
-					versionClasses[version] = classesByTypeId = new Dictionary<int, TpkUnityClass>();
+					versionClasses[fullVersion] = classesByTypeId = new Dictionary<int, TpkUnityClass>();
 				}
 
-				Console.WriteLine(version);
-				blob.Versions.Add(version);
+				Console.WriteLine(fullVersion);
+				blob.Versions.Add(fullVersion);
 
 				var conversionContext = new TypeTreeBinaryConversionContext(typeTreeBinary);
 				foreach (var typeTree in typeTreeBinary.TypeTrees)
@@ -147,7 +152,7 @@ namespace AssetRipper.Tpk.ConsoleApp
 							classesByTypeId[typeTree.RTTI.PersistentTypeId] = tpkUnityClass;
 						}
 						
-						tpkClassInformation.Classes.Add(new VersionClassPair(version, tpkUnityClass));
+						tpkClassInformation.Classes.Add(new VersionClassPair(fullVersion, tpkUnityClass));
 					}
 				}
 
@@ -156,7 +161,7 @@ namespace AssetRipper.Tpk.ConsoleApp
 				{
 					if (latestUnityClassesDumped.Remove(unusedId))
 					{
-						classDictionary[unusedId].Classes.Add(new VersionClassPair(version, null));
+						classDictionary[unusedId].Classes.Add(new VersionClassPair(fullVersion, null));
 					}
 				}
 			}
