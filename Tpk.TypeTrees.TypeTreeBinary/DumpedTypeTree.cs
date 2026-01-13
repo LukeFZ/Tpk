@@ -1,6 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.IO;
-using AssetRipper.Tpk.Shared;
 
 namespace AssetRipper.Tpk.TypeTrees.TypeTreeBinary;
 
@@ -23,5 +23,20 @@ public class DumpedTypeTree
 		{
 			Nodes.Add(new DumpedTypeTreeNode(reader));
 		}
+	}
+
+	public int GetValueHash()
+	{
+		var hashCode = new HashCode();
+
+		hashCode.Add(RTTI.GetValueHash());
+		hashCode.Add(TransferFlags);
+		
+		foreach (var node in Nodes)
+		{
+			hashCode.Add(node.GetValueHash());
+		}
+
+		return hashCode.ToHashCode();
 	}
 }

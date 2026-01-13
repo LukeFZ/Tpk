@@ -1,4 +1,5 @@
-﻿using System.IO;
+﻿using System;
+using System.IO;
 
 namespace AssetRipper.Tpk.TypeTrees.TypeTreeBinary;
 
@@ -16,4 +17,19 @@ public class DumpedTypeTreeRTTI(BinaryReader reader)
 
 	public uint DerivedFromTypeIndex { get; } = reader.ReadUInt32();
 	public uint DerivedFromDescendantCount { get; } = reader.ReadUInt32();
+
+	public int GetValueHash()
+	{
+		var hashCode = new HashCode();
+		hashCode.Add(ClassName);
+		hashCode.Add(ClassNamespace);
+		hashCode.Add(Module);
+		hashCode.Add(PersistentTypeId);
+		hashCode.Add(Size);
+		hashCode.Add(Flags);
+		hashCode.Add(BasePersistentTypeId);
+		hashCode.Add(DerivedFromTypeIndex);
+		hashCode.Add(DerivedFromDescendantCount);
+		return hashCode.ToHashCode();
+	}
 }

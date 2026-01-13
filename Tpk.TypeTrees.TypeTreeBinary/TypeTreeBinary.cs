@@ -25,8 +25,9 @@ public class TypeTreeBinary
 			throw new InvalidDataException($"Unsupported version: {Header.Version}");
 		}
 
-		TypeTrees = new List<DumpedTypeTree>(checked((int)reader.ReadUInt32()));
-		for (int i = 0; i < TypeTrees.Count; i++)
+		var count = reader.ReadUInt32();
+		TypeTrees = new List<DumpedTypeTree>(checked((int)count));
+		for (int i = 0; i < count; i++)
 		{
 			TypeTrees.Add(new DumpedTypeTree(reader));
 		}
@@ -35,7 +36,12 @@ public class TypeTreeBinary
 	public static TypeTreeBinary FromFile(string filePath)
 	{
 		using var fs = File.OpenRead(filePath);
-		using var reader = new BinaryReader(fs);
+		return FromStream(fs);
+	}
+
+	public static TypeTreeBinary FromStream(Stream stream)
+	{
+		using var reader = new BinaryReader(stream);
 		return new TypeTreeBinary(reader);
 	}
 }
