@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using AssetRipper.Tpk.TypeTrees.Json;
 using AssetRipper.Primitives;
+using AssetRipper.Tpk.TypeTrees.TypeTreeBinary;
 using ICSharpCode.SharpZipLib.Zip;
 
 namespace AssetRipper.Tpk.ConsoleApp
@@ -40,6 +41,34 @@ namespace AssetRipper.Tpk.ConsoleApp
 		}
 
 		/// <summary>
+		/// Read TypeTreeBinary objects from a zip file
+		/// </summary>
+		/// <param name="zipFilePath"></param>
+		/// <returns>A list ordered by Unity version</returns>
+		public static IEnumerable<TypeTreeBinary> ReadTypeTreeBinaryFromZipFile(string zipFilePath)
+		{
+			List<TypeTreeBinary> list = new();
+
+			using FileStream fileStream = File.OpenRead(zipFilePath);
+			using ZipInputStream zipInputStream = new ZipInputStream(fileStream);
+			ZipEntry entry;
+			while ((entry = zipInputStream.GetNextEntry()) is not null)
+			{
+				if (entry.IsFile && entry.Name.EndsWith(".ttbin", StringComparison.Ordinal))
+				{
+					using MemoryStream unzippedFileStream = new MemoryStream();
+					zipInputStream.CopyTo(unzippedFileStream);
+					unzippedFileStream.Position = 0;
+					list.Add(TypeTreeBinary.FromStream(unzippedFileStream));
+				}
+			}
+
+			list.Sort(CompareTypeTreeBinary);
+
+			return list;
+		}
+
+		/// <summary>
 		/// Compare two UnityInfo by their versions
 		/// </summary>
 		/// <param name="a"></param>
@@ -55,5 +84,18 @@ namespace AssetRipper.Tpk.ConsoleApp
 			UnityVersion versionB = UnityVersion.Parse(b.Version);
 			return versionA.CompareTo(versionB);
 		}
+
+		/// <summary>
+		/// Compare two TypeTreeBinary by their versions
+		/// </summary>
+		/// <param name="a"></param>
+		/// <param name="b"></param>
+		/// <returns>
+		/// Less than zero: a precedes b<br />
+		/// Zero: equivalent position<br />
+		/// Greater than zero: a follows b
+		/// </returns>
+		private static int CompareTypeTreeBinary(TypeTreeBinary a, TypeTreeBinary b)
+			=> a.Header.Revision.CompareTo(b.Header.Revision);
 	}
 }

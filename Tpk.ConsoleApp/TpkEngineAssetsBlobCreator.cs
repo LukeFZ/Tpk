@@ -8,7 +8,7 @@ internal static class TpkEngineAssetsBlobCreator
 {
 	public static TpkEngineAssetsBlob CreateFromDirectory(string directoryPath)
 	{
-		return Create(JsonFileSorter.GetOrderedFilePaths(directoryPath));
+		return Create(FileSorter.GetOrderedJsonFilePaths(directoryPath));
 	}
 
 	private static TpkEngineAssetsBlob Create(IEnumerable<string> pathsOrderedByUnityVersion)

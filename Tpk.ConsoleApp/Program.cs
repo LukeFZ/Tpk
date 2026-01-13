@@ -15,9 +15,13 @@ namespace AssetRipper.Tpk.ConsoleApp
 				{
 					blob = TpkEngineAssetsBlobCreator.CreateFromDirectory(args[1]);
 				}
+				else if (args[0] is "--typetree-binary")
+				{
+					blob = TpkTypeTreeBlobCreator.CreateFromPath(args[1], false, true);
+				}
 				else
 				{
-					blob = TpkTypeTreeBlobCreator.CreateFromPath(args[1], false);
+					blob = TpkTypeTreeBlobCreator.CreateFromPath(args[1], false, false);
 				}
 
 				MakeTpk(blob, "uncompressed.tpk", "lz4.tpk", "lzma.tpk", "brotli.tpk");

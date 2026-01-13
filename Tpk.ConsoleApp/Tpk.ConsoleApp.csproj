@@ -15,6 +15,7 @@
 
 	<ItemGroup>
 	  <ProjectReference Include="..\Tpk.TypeTrees.Json\Tpk.TypeTrees.Json.csproj" />
+	  <ProjectReference Include="..\Tpk.TypeTrees.TypeTreeBinary\Tpk.TypeTrees.TypeTreeBinary.csproj" />
 	  <ProjectReference Include="..\Tpk\Tpk.csproj" />
 	</ItemGroup>
 

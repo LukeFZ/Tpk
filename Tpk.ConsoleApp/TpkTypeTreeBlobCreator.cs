@@ -3,6 +3,7 @@ using AssetRipper.Tpk.TypeTrees;
 using AssetRipper.Tpk.TypeTrees.Json;
 using System.Collections.Generic;
 using System.Linq;
+using AssetRipper.Tpk.TypeTrees.TypeTreeBinary;
 using VersionClassPair = System.Collections.Generic.KeyValuePair<
 	AssetRipper.Primitives.UnityVersion,
 	AssetRipper.Tpk.TypeTrees.TpkUnityClass?>;
@@ -11,25 +12,25 @@ namespace AssetRipper.Tpk.ConsoleApp
 {
 	internal static class TpkTypeTreeBlobCreator
 	{
-		public static TpkTypeTreeBlob CreateFromPath(string path, bool isZipFile)
-		{
-			return isZipFile ? CreateFromZipFile(path) : CreateFromDirectory(path);
-		}
+		public static TpkTypeTreeBlob CreateFromPath(string path, bool isZipFile, bool isBinary)
+			=> isZipFile 
+				? CreateFromZipFile(path, isBinary) 
+				: CreateFromDirectory(path, isBinary);
 
-		public static TpkTypeTreeBlob CreateFromDirectory(string directoryPath)
-		{
-			return Create(JsonFileSorter.GetOrderedFilePaths(directoryPath));
-		}
+		public static TpkTypeTreeBlob CreateFromDirectory(string directoryPath, bool isBinary)
+			=> Create(isBinary
+				? FileSorter.GetOrderedBinaryFilePaths(directoryPath)
+				: FileSorter.GetOrderedJsonFilePaths(directoryPath), isBinary);
 
-		public static TpkTypeTreeBlob CreateFromZipFile(string zipFilePath)
-		{
-			return Create(ZipFileReader.ReadUnityInfoFromZipFile(zipFilePath));
-		}
+		public static TpkTypeTreeBlob CreateFromZipFile(string zipFilePath, bool isBinary) =>
+			isBinary 
+				? Create(ZipFileReader.ReadTypeTreeBinaryFromZipFile(zipFilePath)) 
+				: Create(ZipFileReader.ReadUnityInfoFromZipFile(zipFilePath));
 
-		private static TpkTypeTreeBlob Create(IEnumerable<string> pathsOrderedByUnityVersion)
-		{
-			return Create(pathsOrderedByUnityVersion.Select(path => UnityInfo.ReadFromJsonFile(path)));
-		}
+		private static TpkTypeTreeBlob Create(IEnumerable<string> pathsOrderedByUnityVersion, bool isBinary) =>
+			isBinary 
+				? Create(pathsOrderedByUnityVersion.Select(TypeTreeBinary.FromFile)) 
+				: Create(pathsOrderedByUnityVersion.Select(UnityInfo.ReadFromJsonFile));
 
 		private static TpkTypeTreeBlob Create(IEnumerable<UnityInfo> infosOrderedByUnityVersion)
 		{
@@ -95,14 +96,87 @@ namespace AssetRipper.Tpk.ConsoleApp
 				}
 			}
 
-			foreach(TpkClassInformation tpkClassInfo in classDictionary.Values)
+			blob.CommonString.SetIndices(blob.StringBuffer, commonStrings);
+			PostProcessCreatedBlob(blob, classDictionary);
+
+			return blob;
+		}
+
+		private static TpkTypeTreeBlob Create(IEnumerable<TypeTreeBinary> typeTreeBinariesOrderedByUnityVersion)
+		{
+			var blob = new TpkTypeTreeBlob();
+			blob.CommonString.Add(UnityVersion.MinVersion, 0);
+
+			var latestUnityClassesDumped = new Dictionary<int, int>();
+			var classDictionary = new Dictionary<int, TpkClassInformation>();
+
+			var versionClasses = new Dictionary<UnityVersion, Dictionary<int, TpkUnityClass>>();
+
+			foreach (var typeTreeBinary in typeTreeBinariesOrderedByUnityVersion)
+			{
+				var version = typeTreeBinary.Header.Revision;
+				if (!versionClasses.TryGetValue(version, out var classesByTypeId))
+				{
+					versionClasses[version] = classesByTypeId = new Dictionary<int, TpkUnityClass>();
+				}
+
+				Console.WriteLine(version);
+				blob.Versions.Add(version);
+
+				var conversionContext = new TypeTreeBinaryConversionContext(typeTreeBinary);
+				foreach (var typeTree in typeTreeBinary.TypeTrees)
+				{
+					var currentTypeTreeValueHash = typeTree.GetValueHash();
+					if (!latestUnityClassesDumped.TryGetValue(typeTree.RTTI.PersistentTypeId, out var cachedHashCode) 
+					    || cachedHashCode != currentTypeTreeValueHash)
+					{
+						latestUnityClassesDumped[typeTree.RTTI.PersistentTypeId] = currentTypeTreeValueHash;
+						if (!classDictionary.TryGetValue(typeTree.RTTI.PersistentTypeId, out var tpkClassInformation))
+						{
+							tpkClassInformation = new TpkClassInformation(typeTree.RTTI.PersistentTypeId);
+							classDictionary.Add(typeTree.RTTI.PersistentTypeId, tpkClassInformation);
+						}
+
+						if (classesByTypeId.TryGetValue(typeTree.RTTI.PersistentTypeId, out var tpkUnityClass))
+						{
+							TypeTreeBinaryConversionContext.Merge(tpkUnityClass, typeTree, blob.StringBuffer, blob.NodeBuffer);
+						}
+						else
+						{
+							tpkUnityClass = conversionContext.Convert(typeTree, blob.StringBuffer, blob.NodeBuffer);
+							classesByTypeId[typeTree.RTTI.PersistentTypeId] = tpkUnityClass;
+						}
+						
+						tpkClassInformation.Classes.Add(new VersionClassPair(version, tpkUnityClass));
+					}
+				}
+
+				var typeIds = typeTreeBinary.TypeTrees.Select(c => c.RTTI.PersistentTypeId).ToList();
+				foreach (var unusedId in classDictionary.Keys.Where(id => !typeIds.Contains(id)))
+				{
+					if (latestUnityClassesDumped.Remove(unusedId))
+					{
+						classDictionary[unusedId].Classes.Add(new VersionClassPair(version, null));
+					}
+				}
+			}
+
+			PostProcessCreatedBlob(blob, classDictionary);
+
+			return blob;
+		}
+
+		private static void PostProcessCreatedBlob(TpkTypeTreeBlob blob,
+			Dictionary<int, TpkClassInformation> classDictionary)
+		{
+			foreach (TpkClassInformation tpkClassInfo in classDictionary.Values)
 			{
 				VersionClassPair[] pairs = tpkClassInfo.Classes.ToArray();
 				TpkUnityClass? previousClass = pairs[0].Value;
-				for(int i = 1; i < pairs.Length; i++)
+				for (int i = 1; i < pairs.Length; i++)
 				{
 					VersionClassPair pair = pairs[i];
-					if(pair.Value == previousClass)
+					if (pair.Value == previousClass)
 					{
 						tpkClassInfo.Classes.Remove(pair);
 					}
@@ -115,15 +189,12 @@ namespace AssetRipper.Tpk.ConsoleApp
 
 			blob.ClassInformation.AddRange(classDictionary.Values);
 
-			blob.CommonString.SetIndices(blob.StringBuffer, commonStrings);
 			//About 21k / 65k
 			Console.WriteLine($"Node buffer has {blob.NodeBuffer.Count} entries, which is {GetUShortPercent(blob.NodeBuffer.Count)}% of its maximum {ushort.MaxValue} entries");
 			//About 7k / 65k
 			Console.WriteLine($"String buffer has {blob.StringBuffer.Count} entries, which is {GetUShortPercent(blob.StringBuffer.Count)}% of its maximum {ushort.MaxValue} entries");
 
 			blob.CreationTime = DateTime.Now.ToUniversalTime();
-
-			return blob;
 		}
 
 		private static int GetUShortPercent(int value) => value * 100 / ushort.MaxValue;
